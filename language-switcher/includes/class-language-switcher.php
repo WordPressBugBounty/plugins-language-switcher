@@ -179,7 +179,7 @@ class Language_Switcher {
 		load_plugin_textdomain('language-switcher', false, Language_Switcher::$plugin_path . 'lang/');
 		
 		add_action('admin_init', array($this, 'init_backend'));
-			
+            
 		add_action('init', array($this, 'init_language'));
 		
 		// shorcodes
@@ -319,26 +319,29 @@ class Language_Switcher {
 	
 	public function normalize_url($url,$current_url) {
 		
-		$proto = ( is_ssl() ? 'https://' : 'http://' );	
+        if( is_string($url) && !empty($url) ){
+            
+            $proto = ( is_ssl() ? 'https://' : 'http://' );	
 
-		if( $url[0] == '/' ){
+            if( $url[0] == '/' ){
 
-			$url = home_url( $url );
-		}
-		else{
-			
-			$u = parse_url($url);
-			
-			if( empty($u['host']) ){
-				
-				$url = $current_url . '/' . $url;
-			}
-			elseif( empty($u['scheme']) ){
-				
-				$url = $proto . $url;
-			}
-		}
-		
+                $url = home_url( $url );
+            }
+            else{
+                
+                $u = parse_url($url);
+                
+                if( empty($u['host']) ){
+                    
+                    $url = $current_url . '/' . $url;
+                }
+                elseif( empty($u['scheme']) ){
+                    
+                    $url = $proto . $url;
+                }
+            }
+        }
+        
 		return $url;
 	}
 	
@@ -405,9 +408,9 @@ class Language_Switcher {
 				$language['main'] = $default_lang;
 			}			
 		}
-		
-		if( empty($language['urls'][$language['main']]) ){
-		
+
+		if( !empty($language['main']) ){
+            
 			$language['urls'][$language['main']] = apply_filters('lsw_sanitize_link',get_permalink($post_id));
 		}
 		
@@ -490,7 +493,7 @@ class Language_Switcher {
 	
 	public function get_default_language($skip_cookie=false){
 		
-		if( !$skip_cookie && !empty($_COOKIE[$this->_prefix . 'd']) ){
+		if( !is_admin() && !$skip_cookie && !empty($_COOKIE[$this->_prefix . 'd']) ){
 			
 			$default_lang = sanitize_text_field($_COOKIE[$this->_prefix . 'd']);
 		}
@@ -528,7 +531,7 @@ class Language_Switcher {
 			$default_urls = get_option( $this->_base . 'default_language_urls' );
             
 			if( is_singular() && !is_front_page() ){
-				 
+				
 				if( !$language = $this->get_post_language( get_queried_object_id() )){
 					
 					$language = array();
@@ -972,37 +975,37 @@ class Language_Switcher {
 		if( in_array( basename($_SERVER['SCRIPT_FILENAME']), array('post.php','post-new.php','edit.php') ) ){
 
 			//add language in post types
-			
+
+            add_action( 'add_meta_boxes', function(){
+                
+                foreach( $this->get_active_post_types() as $post_type ){
+                    
+                    $this->admin->add_meta_box (
+                    
+                        'language_switcher',
+                        __( 'Languages', 'language-switcher' ), 
+                        array($post_type),
+                        'side',
+                        'default'
+                    );
+                }
+            });
+            
 			if( $post_types = $this->get_active_post_types() ){
 				
 				foreach( $post_types as $post_type ){
 					
-					add_action( 'add_meta_boxes', function(){
-						
-						foreach( $this->get_active_post_types() as $post_type ){
-							
-							$this->admin->add_meta_box (
-							
-								'language_switcher',
-								__( 'Languages', 'language-switcher' ), 
-								array($post_type),
-								'side',
-								'default'
-							);
-						}
-					});
-					
-					add_filter( $post_type . '_custom_fields', array( $this, get_post_type_object( $post_type )->public ? 'add_post_type_language_switcher_with_url' : 'add_post_type_language_switcher_without_url' ));
+					add_filter($post_type . '_custom_fields', array( $this, get_post_type_object( $post_type )->public ? 'add_post_type_language_switcher_with_url' : 'add_post_type_language_switcher_without_url' ));
 				
-					add_action( 'save_post_' . $post_type, array( $this, 'save_language_post_type' ), 10, 3 );
+					add_filter('manage_'.$post_type.'_posts_columns', array( $this, 'set_language_post_type_columns' ) );
 				
-					add_filter( 'manage_'.$post_type.'_posts_columns', array( $this, 'set_language_post_type_columns' ) );
-				
-					add_action( 'manage_'.$post_type.'_posts_custom_column' , array( $this, 'get_language_post_type_column' ), 10, 2 );
+					add_action('manage_'.$post_type.'_posts_custom_column' , array( $this, 'get_language_post_type_column' ), 10, 2 );
 				}
-			
-				add_filter( 'pre_get_posts', array( $this, 'query_admin_language_post_type') );
 			}
+
+            add_action('save_post', array( $this, 'save_language_post_type' ), 10, 3 );
+				
+            add_filter('pre_get_posts', array( $this, 'query_admin_language_post_type') );
 		}		
 		elseif( in_array( basename($_SERVER['SCRIPT_FILENAME']), array('term.php','edit-tags.php') ) ){
 		
@@ -1459,12 +1462,16 @@ class Language_Switcher {
 			
 			$language_switcher = $this->sanitize_language_switcher($_REQUEST['language_switcher']);
 			
-			update_term_meta($term_id,'language_switcher',$language_switcher);
-
 			if( !empty($language_switcher['main']) ){
 			
-				update_term_meta($term_id,$this->_base . 'main_language',$language_switcher['main']);
+                $main_lang = $language_switcher['main'];
+            
+                $language_switcher['urls'][$main_lang] = apply_filters('lsw_sanitize_link',get_term_link($term_id));
+            
+				update_term_meta($term_id,$this->_base . 'main_language',$main_lang);
 			}
+            
+            update_term_meta($term_id,'language_switcher',$language_switcher);
 		}
 		
 		do_action('lsw_taxonomy_edited',$term_id);
@@ -1475,14 +1482,18 @@ class Language_Switcher {
 		if( isset($_REQUEST['language_switcher']) && is_array($_REQUEST['language_switcher']) ){
 			
 			$language_switcher = $this->sanitize_language_switcher($_REQUEST['language_switcher']);
-
-			update_post_meta($post_id,$this->_base . 'language_switcher',$language_switcher);
-			
+            
 			if( !empty($language_switcher['main']) ){
 
-				update_post_meta($post_id,$this->_base . 'main_language',$language_switcher['main']);
-			}
+                $main_lang = $language_switcher['main'];
+                
+                $language_switcher['urls'][$main_lang] = apply_filters('lsw_sanitize_link',get_permalink($post_id));
+                
+				update_post_meta($post_id,$this->_base . 'main_language',$main_lang);
+
+            }
 			
+			update_post_meta($post_id,$this->_base . 'language_switcher',$language_switcher);
 		}
 		
 		do_action('lsw_post_type_edited',$post_id);
@@ -1516,7 +1527,7 @@ class Language_Switcher {
 		return home_url(add_query_arg( $_SERVER['QUERY_STRING'], '', $wp->request));
 	}
 	
-	public function get_language_urls($languages){
+	public function get_language_urls($languages,$is_shortcode=false){
 		
 		$urls = array();
 		
@@ -1526,7 +1537,7 @@ class Language_Switcher {
 			
 			$language = $this->get_current_language();
 			
-			foreach($active_languages as $iso){
+			foreach( $active_languages as $iso ){
 				
 				if( !empty($languages[$iso]) ){
 					
@@ -1538,14 +1549,21 @@ class Language_Switcher {
 					}
 					elseif( $language['main'] != $iso ){
 						
-						if( !empty($default_urls[$iso]) ){
-						
-							$urls[$iso]['url'] = $default_urls[$iso];
-						}
-						else{
+						if( !$is_shortcode ){
 							
-							$urls[$iso]['url'] = add_query_arg( array('lang' => $iso), $this->get_current_url() );
-						}
+                            if( !empty($default_urls[$iso]) ){
+                            
+                                $urls[$iso]['url'] = $default_urls[$iso];
+                            }
+                            else{
+                            
+                                $urls[$iso]['url'] = add_query_arg( array('lang' => $iso), $this->get_current_url() );
+                            }
+                        }
+                        else{
+                            
+                            $urls[$iso]['url'] = false;
+                        }
 					}
 					else{
 						
@@ -1564,10 +1582,10 @@ class Language_Switcher {
 		$show 		= ( !empty($atts['show']) ? $atts['show'] : 'title_option' );
 		$icon 		= ( !empty($atts['icon']) ? $atts['icon'] : '' );
 		
-		return $this->get_language_switcher( $display, $show, $icon );
+		return $this->get_language_switcher( $display, $show, $icon, true );
 	}
 		
-	public function get_language_switcher( $display = 'button', $show = 'title_option', $icon = '' ){
+	public function get_language_switcher( $display = 'button', $show = 'title_option', $icon = '', $is_shortcode = false ){
 		
 		// get languages
 		
@@ -1575,7 +1593,7 @@ class Language_Switcher {
 		
 		// get language urls
 		
-		$urls = $this->get_language_urls($languages);
+		$urls = $this->get_language_urls($languages, $is_shortcode);
 		
 		// current language
 		
@@ -1620,11 +1638,14 @@ class Language_Switcher {
 				
 					foreach( $urls as $iso => $data ){
 						
-						$switcher .= '<li'.( $language['main'] == $iso ? ' class="lsw-active"' : '' ).'>';
-							
-							$switcher .= '<a onclick="setLang(\''.$iso.'\');" href="'.esc_url($data['url']).'">'.$data['language'].'</a>';
-							
-						$switcher .= '</li>';
+                        if( !empty($data['url']) ){
+                            
+                            $switcher .= '<li'.( $language['main'] == $iso ? ' class="lsw-active"' : '' ).'>';
+                                
+                                $switcher .= '<a onclick="setLang(\''.$iso.'\');" href="'.esc_url($data['url']).'">'.$data['language'].'</a>';
+                                
+                            $switcher .= '</li>';
+                        }
 					}
 					
 				$switcher .= '</ul>';
@@ -1660,12 +1681,15 @@ class Language_Switcher {
 				$html .= '<ul class="jq-dropdown-menu">';
 				
 					foreach( $urls as $iso => $data ){
+                    
+                        if( !empty($data['url']) ){
 
-						$html .= '<li'.( $language['main'] == $iso ? ' class="lsw-active"' : '' ).'>';
-							
-							$html .= '<a onclick="setLang(\''.$iso.'\');" href="' . esc_url($data['url']) . '">' . $data['language'] . '</a>';
-						
-						$html .= '</li>';
+                            $html .= '<li'.( $language['main'] == $iso ? ' class="lsw-active"' : '' ).'>';
+                                
+                                $html .= '<a onclick="setLang(\''.$iso.'\');" href="' . esc_url($data['url']) . '">' . $data['language'] . '</a>';
+                            
+                            $html .= '</li>';
+                        }
 					}
 					
 				$html .= '</ul>';
